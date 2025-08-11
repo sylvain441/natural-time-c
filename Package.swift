@@ -15,8 +15,7 @@ let package = Package(
             name: "CNaturalTime",
             path: ".",
             exclude: [
-                ".github", "build", "tests", "packages", "CMakeLists.txt", "README.md", "LICENSE",
-                "include/natural_time_core.h"
+                ".github", "build", "tests", "packages", "CMakeLists.txt", "README.md"
             ],
             sources: [
                 "src/natural_time.c",
