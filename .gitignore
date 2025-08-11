@@ -1,0 +1,36 @@
+tests/data/vectors.json
+# Large upstream vendor contents we don't want to track directly
+vendor/astronomy/
+vendor/astronomy/generate/
+
+# CMake build directories and files
+/build/
+/build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Swift Package Manager
+.build/
+.swiftpm/
+**/.build/
+**/.swiftpm/
+
+# Compiled artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# macOS
+.DS_Store
+
+# IDE/editor
+.vscode/
+.idea/
