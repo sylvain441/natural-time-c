@@ -114,11 +114,12 @@ int main(void) {
   double sum_delta_deg[6] = {0};
   double max_delta_deg[6] = {0};
   long long event_counts[6] = {0};
-  // Moon stats
+  // Sun/Moon stats
+  long long sun_alt_checked = 0;
+  double sun_sum_alt_delta = 0, sun_max_alt_delta = 0;
   long long moon_checked = 0;
   double moon_sum_alt_delta = 0, moon_max_alt_delta = 0;
   double moon_sum_phase_delta = 0, moon_max_phase_delta = 0;
-  double moon_sum_illum_delta = 0, moon_max_illum_delta = 0;
   double moon_sum_rise_delta = 0, moon_max_rise_delta = 0;
   double moon_sum_set_delta = 0, moon_max_set_delta = 0;
   double moon_sum_transit_alt_delta = 0, moon_max_transit_alt_delta = 0;
@@ -225,23 +226,31 @@ int main(void) {
           failures++;
         }
 
+        // Sun altitude parity
+        double exp_sun_altitude;
+        if (parse_double_after(json, expect_pos, "sun_altitude", &exp_sun_altitude)) {
+          nt_sun_position sp;
+          if (nt_sun_position_for_date(&nd, latitude, &sp) == NT_OK) {
+            double d = fabs(sp.altitude - exp_sun_altitude);
+            sun_sum_alt_delta += d; if (d > sun_max_alt_delta) sun_max_alt_delta = d; sun_alt_checked++;
+          }
+        }
+
         // Moon parity (position + events)
         nt_moon_position mp;
         nt_moon_events me;
         if (nt_moon_position_for_date(&nd, latitude, &mp) == NT_OK &&
             nt_moon_events_for_date(&nd, latitude, &me) == NT_OK) {
-          double exp_moon_alt, exp_moon_phase, exp_moon_illum;
+          double exp_moon_alt, exp_moon_phase;
           double exp_moonrise, exp_moonset, exp_highest_alt;
           if (parse_double_after(json, expect_pos, "altitude", &exp_moon_alt) &&
               parse_double_after(json, expect_pos, "phase_deg", &exp_moon_phase) &&
-              parse_double_after(json, expect_pos, "illumination", &exp_moon_illum) &&
               parse_double_after(json, expect_pos, "moonrise_deg", &exp_moonrise) &&
               parse_double_after(json, expect_pos, "moonset_deg", &exp_moonset) &&
               parse_double_after(json, expect_pos, "highest_altitude", &exp_highest_alt)) {
             double d_alt = fabs(mp.altitude - exp_moon_alt);
             double d_phase = fabs(mp.phase_deg - exp_moon_phase);
             if (d_phase > 180.0) d_phase = 360.0 - d_phase;
-            double d_illum = fabs(mp.illumination - exp_moon_illum);
             double d_rise = fabs(me.moonrise_deg - exp_moonrise);
             if (d_rise > 180.0) d_rise = 360.0 - d_rise;
             double d_set = fabs(me.moonset_deg - exp_moonset);
@@ -250,7 +259,6 @@ int main(void) {
 
             moon_sum_alt_delta += d_alt; if (d_alt > moon_max_alt_delta) moon_max_alt_delta = d_alt;
             moon_sum_phase_delta += d_phase; if (d_phase > moon_max_phase_delta) moon_max_phase_delta = d_phase;
-            moon_sum_illum_delta += d_illum; if (d_illum > moon_max_illum_delta) moon_max_illum_delta = d_illum;
             moon_sum_rise_delta += d_rise; if (d_rise > moon_max_rise_delta) moon_max_rise_delta = d_rise;
             moon_sum_set_delta += d_set; if (d_set > moon_max_set_delta) moon_max_set_delta = d_set;
             moon_sum_transit_alt_delta += d_trans; if (d_trans > moon_max_transit_alt_delta) moon_max_transit_alt_delta = d_trans;
@@ -283,6 +291,9 @@ int main(void) {
   }
   // When parity is exact (no mismatches), still compute and print average epsilons (should be ~0)
   printf("parity ok (%d cases)\n", checked);
+  if (sun_alt_checked > 0) {
+    printf("sun avg alt Δ: %.6f deg (max %.6f)\n", sun_sum_alt_delta / sun_alt_checked, sun_max_alt_delta);
+  }
   for (int ei = 0; ei < 6; ++ei) {
     if (event_counts[ei] > 0) {
       double avg_deg = sum_delta_deg[ei] / (double)event_counts[ei];
@@ -295,7 +306,6 @@ int main(void) {
   if (moon_checked > 0) {
     printf("moon avg alt Δ: %.6f deg (max %.6f)\n", moon_sum_alt_delta / moon_checked, moon_max_alt_delta);
     printf("moon avg phase Δ: %.6f deg (max %.6f)\n", moon_sum_phase_delta / moon_checked, moon_max_phase_delta);
-    printf("moon avg illum Δ: %.6f (max %.6f)\n", moon_sum_illum_delta / moon_checked, moon_max_illum_delta);
     printf("moon avg moonrise Δ: %.6f deg (max %.6f)\n", moon_sum_rise_delta / moon_checked, moon_max_rise_delta);
     printf("moon avg moonset Δ: %.6f deg (max %.6f)\n", moon_sum_set_delta / moon_checked, moon_max_set_delta);
     printf("moon avg transit altitude Δ: %.6f deg (max %.6f)\n", moon_sum_transit_alt_delta / moon_checked, moon_max_transit_alt_delta);

@@ -46,10 +46,13 @@ public struct SunEvents {
     public let eveningGolden: Double
 }
 
+public struct SunPosition {
+    public let altitude: Double
+}
+
 public struct MoonPosition {
     public let altitude: Double
     public let phaseDeg: Double
-    public let illumination: Double
 }
 
 public struct MoonEvents {
@@ -89,7 +92,14 @@ public func moonPosition(for nd: NaturalDate, latitude: Double) throws -> MoonPo
     var c = nd.cStruct
     var out = nt_moon_position()
     try mapErr(nt_moon_position_for_date(&c, latitude, &out))
-    return MoonPosition(altitude: out.altitude, phaseDeg: out.phase_deg, illumination: out.illumination)
+    return MoonPosition(altitude: out.altitude, phaseDeg: out.phase_deg)
+}
+
+public func sunPosition(for nd: NaturalDate, latitude: Double) throws -> SunPosition {
+    var c = nd.cStruct
+    var out = nt_sun_position()
+    try mapErr(nt_sun_position_for_date(&c, latitude, &out))
+    return SunPosition(altitude: out.altitude)
 }
 
 public func moonEvents(for nd: NaturalDate, latitude: Double) throws -> MoonEvents {

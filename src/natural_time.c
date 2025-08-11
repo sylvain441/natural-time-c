@@ -221,6 +221,23 @@ nt_err nt_sun_events_for_date(const nt_natural_date* nd, double latitude_deg, nt
   return NT_OK;
 }
 
+nt_err nt_sun_position_for_date(const nt_natural_date* nd, double latitude_deg, nt_sun_position* out) {
+  if (!nd || !out) return NT_ERR_INTERNAL;
+  if (!(latitude_deg >= -90.0 && latitude_deg <= 90.0)) return NT_ERR_RANGE;
+
+  astro_observer_t obs = Astronomy_MakeObserver(latitude_deg, nd->longitude, 0.0);
+  astro_time_t t = astro_time_from_unix_ms(nd->unix_time);
+
+  astro_equatorial_t sun_eq = Astronomy_Equator(BODY_SUN, &t, obs, EQUATOR_OF_DATE, ABERRATION);
+  if (sun_eq.status != ASTRO_SUCCESS) return NT_ERR_INTERNAL;
+  astro_horizon_t hor = Astronomy_Horizon(&t, obs, sun_eq.ra, sun_eq.dec, REFRACTION_NORMAL);
+  double alt = hor.altitude;
+  if (alt < 0) alt = 0; // clamp for a visible altitude similar to moon
+
+  out->altitude = alt;
+  return NT_OK;
+}
+
 nt_err nt_moon_position_for_date(const nt_natural_date* nd, double latitude_deg, nt_moon_position* out) {
   if (!nd || !out) return NT_ERR_INTERNAL;
   if (!(latitude_deg >= -90.0 && latitude_deg <= 90.0)) return NT_ERR_RANGE;
@@ -239,7 +256,6 @@ nt_err nt_moon_position_for_date(const nt_natural_date* nd, double latitude_deg,
 
   out->altitude = alt;
   out->phase_deg = phase.angle;
-  out->illumination = cos(phase.angle * M_PI / 180.0);
   return NT_OK;
 }
 

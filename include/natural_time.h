@@ -38,9 +38,12 @@ typedef struct {
 } nt_sun_events;
 
 typedef struct {
+  double altitude;      // clamped to >= 0 like moon
+} nt_sun_position;
+
+typedef struct {
   double altitude;      // clamped to >= 0 like JS
   double phase_deg;     // 0..360
-  double illumination;  // cos(phase_rad)
 } nt_moon_position;
 
 typedef struct {
@@ -60,6 +63,7 @@ typedef struct {
 nt_err nt_make_natural_date(int64_t unix_ms_utc, double longitude_deg, nt_natural_date* out);
 nt_err nt_get_time_of_event(const nt_natural_date* nd, int64_t event_unix_ms_utc, double* out_deg_or_nan);
 nt_err nt_sun_events_for_date(const nt_natural_date* nd, double latitude_deg, nt_sun_events* out);
+nt_err nt_sun_position_for_date(const nt_natural_date* nd, double latitude_deg, nt_sun_position* out);
 nt_err nt_moon_position_for_date(const nt_natural_date* nd, double latitude_deg, nt_moon_position* out);
 nt_err nt_moon_events_for_date(const nt_natural_date* nd, double latitude_deg, nt_moon_events* out);
 nt_err nt_mustaches_range(const nt_natural_date* nd, double latitude_deg, nt_mustaches* out);

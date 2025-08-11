@@ -21,7 +21,7 @@ This is not a calendar tweak — it’s a return to observable celestial cycles.
 
 - Natural date: `nt_make_natural_date`, `nt_get_time_of_event`
 - Sun events: sunrise/sunset, night start/end (−12°), golden hour (+6°)
-- Moon: altitude/phase/illumination and moonrise/moonset/transit
+- Moon: altitude/phase and moonrise/moonset/transit
 - Mustaches: winter/summer sunrise/sunset + average angle
 - Golden‑vector parity vs JS; CI on macOS/Linux/Windows
 
