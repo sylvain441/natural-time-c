@@ -8,6 +8,33 @@
 static const int64_t MS_PER_DAY = 86400000LL;
 static const int64_t END_OF_ARTIFICIAL_TIME = 1356091200000LL; // 2012-12-21T12:00:00Z
 
+// Simple caches (not thread-safe). These speed up repeated queries that
+// occur frequently in UI loops without meaningfully changing results.
+typedef struct {
+  int valid;
+  int year;
+  astro_seasons_t seasons;
+} seasons_cache_t;
+static seasons_cache_t g_seasons_cache_1 = {0};
+static seasons_cache_t g_seasons_cache_2 = {0};
+
+typedef struct {
+  int valid;
+  int64_t nadir;
+  double latitude;
+  double longitude;
+  nt_sun_events value;
+} sun_events_cache_t;
+static sun_events_cache_t g_sun_events_cache = {0};
+
+typedef struct {
+  int valid;
+  int year;
+  double latitude;
+  nt_mustaches value;
+} moustaches_cache_t;
+static moustaches_cache_t g_moustaches_cache = {0};
+
 // 💡 timegm converts a UTC struct tm to Unix seconds since epoch.
 // It exists on macOS; provide a fallback shim if needed.
 static int64_t to_unix_ms_utc(int y, int m, int d, int hh, int mm, int ss, int ms) {
@@ -48,6 +75,23 @@ static astro_time_t astro_time_from_unix_ms(int64_t unix_ms) {
   return Astronomy_TimeFromUtc(utc);
 }
 
+static astro_seasons_t seasons_for_year(int year) {
+  // Two-entry cache with trivial eviction.
+  if (g_seasons_cache_1.valid && g_seasons_cache_1.year == year) {
+    return g_seasons_cache_1.seasons;
+  }
+  if (g_seasons_cache_2.valid && g_seasons_cache_2.year == year) {
+    return g_seasons_cache_2.seasons;
+  }
+  astro_seasons_t s = Astronomy_Seasons(year);
+  // Evict the older cache slot.
+  g_seasons_cache_2 = g_seasons_cache_1;
+  g_seasons_cache_1.valid = 1;
+  g_seasons_cache_1.year = year;
+  g_seasons_cache_1.seasons = s;
+  return s;
+}
+
 static void add_days_to_utc(int *y, int *m, int *d, int days) {
   // Normalize by constructing a tm and letting timegm handle rollovers
   struct tm tmv;
@@ -73,9 +117,9 @@ static void add_days_to_utc(int *y, int *m, int *d, int days) {
 }
 
 static int64_t calculate_year_start_ms(int artificial_year, double longitude_deg, int *out_duration_days) {
-  // Get December solstices for Y and Y+1
-  astro_seasons_t s0 = Astronomy_Seasons(artificial_year);
-  astro_seasons_t s1 = Astronomy_Seasons(artificial_year + 1);
+  // Get December solstices for Y and Y+1 (cached)
+  astro_seasons_t s0 = seasons_for_year(artificial_year);
+  astro_seasons_t s1 = seasons_for_year(artificial_year + 1);
   astro_utc_t u0 = Astronomy_UtcFromTime(s0.dec_solstice);
   astro_utc_t u1 = Astronomy_UtcFromTime(s1.dec_solstice);
 
@@ -106,6 +150,10 @@ static int utc_year_from_unix_ms(int64_t unix_ms) {
 
 void nt_reset_caches(void) {
   Astronomy_Reset();
+  // Invalidate local caches
+  g_seasons_cache_1.valid = 0; g_seasons_cache_2.valid = 0;
+  g_sun_events_cache.valid = 0;
+  g_moustaches_cache.valid = 0;
 }
 
 nt_err nt_make_natural_date(int64_t unix_ms_utc, double longitude_deg, nt_natural_date* out) {
@@ -194,6 +242,15 @@ nt_err nt_sun_events_for_date(const nt_natural_date* nd, double latitude_deg, nt
   if (!nd || !out) return NT_ERR_INTERNAL;
   if (!(latitude_deg >= -90.0 && latitude_deg <= 90.0)) return NT_ERR_RANGE;
 
+  // Cache by (nadir day, latitude, longitude)
+  if (g_sun_events_cache.valid &&
+      g_sun_events_cache.nadir == nd->nadir &&
+      g_sun_events_cache.latitude == latitude_deg &&
+      g_sun_events_cache.longitude == nd->longitude) {
+    *out = g_sun_events_cache.value;
+    return NT_OK;
+  }
+
   astro_observer_t obs = Astronomy_MakeObserver(latitude_deg, nd->longitude, 0.0);
   astro_time_t nadir_time = astro_time_from_unix_ms(nd->nadir);
   int summer = is_summer_season(nd->day_of_year, latitude_deg);
@@ -217,6 +274,13 @@ nt_err nt_sun_events_for_date(const nt_natural_date* nd, double latitude_deg, nt
   out->night_end_deg = event_time_or_default(nd, night_end, summer, 0);
   out->morning_golden_deg = event_time_or_default(nd, morning_golden, summer, 0);
   out->evening_golden_deg = event_time_or_default(nd, evening_golden, summer, 1);
+
+  // Store cache
+  g_sun_events_cache.valid = 1;
+  g_sun_events_cache.nadir = nd->nadir;
+  g_sun_events_cache.latitude = latitude_deg;
+  g_sun_events_cache.longitude = nd->longitude;
+  g_sun_events_cache.value = *out;
 
   return NT_OK;
 }
@@ -297,7 +361,16 @@ nt_err nt_mustaches_range(const nt_natural_date* nd, double latitude_deg, nt_mus
   if (!(latitude_deg >= -90.0 && latitude_deg <= 90.0)) return NT_ERR_RANGE;
 
   int current_year = utc_year_from_unix_ms(nd->unix_time);
-  astro_seasons_t seasons = Astronomy_Seasons(current_year);
+
+  // Cache by (year, latitude)
+  if (g_moustaches_cache.valid &&
+      g_moustaches_cache.year == current_year &&
+      g_moustaches_cache.latitude == latitude_deg) {
+    *out = g_moustaches_cache.value;
+    return NT_OK;
+  }
+
+  astro_seasons_t seasons = seasons_for_year(current_year);
   if (seasons.status != ASTRO_SUCCESS) return NT_ERR_INTERNAL;
 
   // Build NaturalDate at exact solstice instants at longitude 0 (as in JS), then compute sun events at given latitude.
@@ -329,6 +402,12 @@ nt_err nt_mustaches_range(const nt_natural_date* nd, double latitude_deg, nt_mus
   out->summer_sunrise_deg = sse.sunrise_deg;
   out->summer_sunset_deg = sse.sunset_deg;
   out->average_angle_deg = avg;
+
+  // Store cache
+  g_moustaches_cache.valid = 1;
+  g_moustaches_cache.year = current_year;
+  g_moustaches_cache.latitude = latitude_deg;
+  g_moustaches_cache.value = *out;
   return NT_OK;
 }
 
