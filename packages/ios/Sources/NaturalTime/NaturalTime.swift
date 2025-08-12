@@ -18,12 +18,12 @@ public struct NaturalDate {
     public let yearDuration: Int32
     public let nadir: Int64
 
-    public init(unixMsUtc: Int64, longitudeDeg: Double) throws {
+    public init(unixMsUtc: Int64, longitude: Double) throws {
         var c = nt_natural_date()
-        let err = nt_make_natural_date(unixMsUtc, longitudeDeg, &c)
+        let err = nt_make_natural_date(unixMsUtc, longitude, &c)
         guard err == NT_OK else { throw NSError(domain: "NaturalTimeCore", code: Int(err.rawValue), userInfo: nil) }
         year = c.year; moon = c.moon; week = c.week; weekOfMoon = c.week_of_moon
-        unixTime = c.unix_time; longitude = c.longitude; day = c.day; dayOfYear = c.day_of_year
+        unixTime = c.unix_time; self.longitude = c.longitude; day = c.day; dayOfYear = c.day_of_year
         dayOfMoon = c.day_of_moon; dayOfWeek = c.day_of_week; isRainbowDay = c.is_rainbow_day != 0
         timeDeg = c.time_deg; yearStart = c.year_start; yearDuration = c.year_duration; nadir = c.nadir
     }
@@ -48,6 +48,7 @@ public struct SunEvents {
 
 public struct SunPosition {
     public let altitude: Double
+    public let highestAltitude: Double
 }
 
 public struct MoonPosition {
@@ -99,7 +100,7 @@ public func sunPosition(for nd: NaturalDate, latitude: Double) throws -> SunPosi
     var c = nd.cStruct
     var out = nt_sun_position()
     try mapErr(nt_sun_position_for_date(&c, latitude, &out))
-    return SunPosition(altitude: out.altitude)
+    return SunPosition(altitude: out.altitude, highestAltitude: out.highest_altitude)
 }
 
 public func moonEvents(for nd: NaturalDate, latitude: Double) throws -> MoonEvents {

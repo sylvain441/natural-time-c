@@ -39,6 +39,7 @@ typedef struct {
 
 typedef struct {
   double altitude;      // clamped to >= 0 like moon
+  double highest_altitude; // degrees at daily transit
 } nt_sun_position;
 
 typedef struct {

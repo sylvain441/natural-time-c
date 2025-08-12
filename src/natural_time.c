@@ -298,7 +298,12 @@ nt_err nt_sun_position_for_date(const nt_natural_date* nd, double latitude_deg, 
   double alt = hor.altitude;
   if (alt < 0) alt = 0; // clamp for a visible altitude similar to moon
 
+  // Highest altitude (daily transit) at hour angle 0 around natural nadir anchor
+  astro_hour_angle_t transit = Astronomy_SearchHourAngleEx(BODY_SUN, obs, 0.0, astro_time_from_unix_ms(nd->nadir), +1);
+  double highest = (transit.status == ASTRO_SUCCESS) ? transit.hor.altitude : 0.0;
+
   out->altitude = alt;
+  out->highest_altitude = highest;
   return NT_OK;
 }
 

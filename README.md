@@ -73,7 +73,7 @@ import NaturalTime
 
 let nd = try NaturalDate(
   unixMsUtc: Int64(Date().timeIntervalSince1970 * 1000),
-  longitudeDeg: 0
+  longitude: 0
 )
 let sun = try sunEvents(for: nd, latitude: 48.85)
 let moonPos = try moonPosition(for: nd, latitude: 48.85)
