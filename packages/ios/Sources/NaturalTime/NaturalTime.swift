@@ -35,6 +35,63 @@ public struct NaturalDate {
             time_deg: timeDeg, year_start: yearStart, year_duration: yearDuration, nadir: nadir
         )
     }
+
+    // MARK: - Formatting helpers (bridge to C API)
+
+    public func toYearString() -> String {
+        var buf = [CChar](repeating: 0, count: 16)
+        _ = nt_format_year_string(year, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func toMoonString() -> String {
+        var buf = [CChar](repeating: 0, count: 8)
+        _ = nt_format_moon_string(moon, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func toDayOfMoonString() -> String {
+        var buf = [CChar](repeating: 0, count: 8)
+        _ = nt_format_day_of_moon_string(dayOfMoon, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func toLongitudeString(decimals: Int32 = 1) -> String {
+        var buf = [CChar](repeating: 0, count: 16)
+        _ = nt_format_longitude_string(longitude, decimals, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func toTimeString(decimals: Int32 = 2, rounding: Double = 0.01) -> String {
+        var c = cStruct
+        var buf = [CChar](repeating: 0, count: 32)
+        _ = nt_format_time_string(&c, decimals, rounding, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func splitTime(scaleDecimals: Int32 = 2, rounding: Double = 0.01) -> (integer: Int32, fraction: Int32, scale: Int32) {
+        var c = cStruct
+        var integer: Int32 = 0
+        var fraction: Int32 = 0
+        var scale: Int32 = 0
+        _ = nt_time_split_scaled(&c, scaleDecimals, rounding, &integer, &fraction, &scale)
+        return (integer, fraction, scale)
+    }
+
+    public func toDateString(separator: Character = ")") -> String {
+        var c = cStruct
+        var buf = [CChar](repeating: 0, count: 48)
+        let sepC: CChar = String(separator).utf8.first.map { CChar($0) } ?? CChar(41) // ')'
+        _ = nt_format_date_string(&c, sepC, &buf, buf.count)
+        return String(cString: buf)
+    }
+
+    public func toString(timeDecimals: Int32 = 2, timeRounding: Double = 0.01) -> String {
+        var c = cStruct
+        var buf = [CChar](repeating: 0, count: 96)
+        _ = nt_format_string(&c, timeDecimals, timeRounding, &buf, buf.count)
+        return String(cString: buf)
+    }
 }
 
 public struct SunEvents {

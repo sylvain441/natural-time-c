@@ -2,6 +2,8 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include "astronomy.h"  // vendor/astronomy include path wired from CMake
 
 // Constants
@@ -416,4 +418,178 @@ nt_err nt_mustaches_range(const nt_natural_date* nd, double latitude_deg, nt_mus
   return NT_OK;
 }
 
+
+// -------------------------
+// Formatting helpers (C API)
+// -------------------------
+
+static void safe_snprintf(char* buffer, size_t buffer_size, const char* fmt, ...) {
+  if (!buffer || buffer_size == 0) return;
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, buffer_size, fmt, args);
+  va_end(args);
+  buffer[buffer_size - 1] = '\0';
+}
+
+static void pad_left_int(char* out, size_t out_size, int value, int width) {
+  char tmp[64];
+  snprintf(tmp, sizeof(tmp), "%d", value);
+  int len = (int)strlen(tmp);
+  if (len >= width) {
+    safe_snprintf(out, out_size, "%s", tmp);
+    return;
+  }
+  int pad = width - len;
+  if ((size_t)(pad + len + 1) > out_size) {
+    // fallback to truncated copy
+    safe_snprintf(out, out_size, "%s", tmp);
+    return;
+  }
+  for (int i = 0; i < pad && i < (int)out_size - 1; ++i) out[i] = '0';
+  for (int i = 0; i < len && (i + pad) < (int)out_size - 1; ++i) out[i + pad] = tmp[i];
+  int end = pad + len;
+  if (end < (int)out_size) out[end] = '\0';
+}
+
+static double round_to_increment(double value, double increment) {
+  if (increment <= 0.0) return value;
+  double q = value / increment;
+  double r = floor(q + 0.5);
+  return r * increment;
+}
+
+nt_err nt_format_year_string(int32_t year, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 2) return NT_ERR_RANGE;
+  int absYear = (year < 0) ? -year : year;
+  char digits[16];
+  pad_left_int(digits, sizeof(digits), absYear, 3);
+  if (year < 0) safe_snprintf(buffer, buffer_size, "-%s", digits);
+  else safe_snprintf(buffer, buffer_size, "%s", digits);
+  return NT_OK;
+}
+
+nt_err nt_format_moon_string(int32_t moon, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 3) return NT_ERR_RANGE;
+  char digits[8];
+  pad_left_int(digits, sizeof(digits), (int)moon, 2);
+  safe_snprintf(buffer, buffer_size, "%s", digits);
+  return NT_OK;
+}
+
+nt_err nt_format_day_of_moon_string(int32_t day_of_moon, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 3) return NT_ERR_RANGE;
+  char digits[8];
+  pad_left_int(digits, sizeof(digits), (int)day_of_moon, 2);
+  safe_snprintf(buffer, buffer_size, "%s", digits);
+  return NT_OK;
+}
+
+nt_err nt_format_time_string(const nt_natural_date* nd, int decimals, double rounding, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 2 || !nd) return NT_ERR_RANGE;
+  if (decimals < 0 || decimals > 6) decimals = 2;
+  // Use integer math at scaled resolution to avoid 99→100 glitches
+  int32_t degInt = 0, frac = 0, scale = 0;
+  nt_err e = nt_time_split_scaled(nd, decimals, rounding, &degInt, &frac, &scale);
+  if (e != NT_OK) return e;
+
+  char intBuf[16];
+  pad_left_int(intBuf, sizeof(intBuf), degInt, 3);
+  if (decimals == 0 || scale <= 1) {
+    safe_snprintf(buffer, buffer_size, "%s°", intBuf);
+    return NT_OK;
+  }
+  // fraction padded to 'decimals' digits
+  char fracFmt[16];
+  snprintf(fracFmt, sizeof(fracFmt), "%%0%dd", decimals);
+  char fracBuf[16];
+  snprintf(fracBuf, sizeof(fracBuf), fracFmt, frac);
+  safe_snprintf(buffer, buffer_size, "%s°%s", intBuf, fracBuf);
+  return NT_OK;
+}
+
+nt_err nt_format_longitude_string(double longitude_deg, int decimals, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 3) return NT_ERR_RANGE;
+  if (fabs(longitude_deg) < 0.5) {
+    safe_snprintf(buffer, buffer_size, "NTZ");
+    return NT_OK;
+  }
+  if (decimals < 0 || decimals > 3) decimals = 1;
+  char sign = (longitude_deg >= 0.0) ? '+' : '-';
+  double absLon = fabs(longitude_deg);
+  int intPart = (int)floor(absLon);
+  double frac = absLon - floor(absLon);
+  char intBuf[8];
+  pad_left_int(intBuf, sizeof(intBuf), intPart, 1);
+  if (decimals == 0) {
+    safe_snprintf(buffer, buffer_size, "NT%c%s", sign, intBuf);
+    return NT_OK;
+  }
+  char fmt[16];
+  snprintf(fmt, sizeof(fmt), "%%.%df", decimals);
+  char fracBuf[32];
+  snprintf(fracBuf, sizeof(fracBuf), fmt, frac);
+  const char* dec = strchr(fracBuf, '.');
+  const char* digits = dec ? (dec + 1) : "";
+  safe_snprintf(buffer, buffer_size, "NT%c%s.%s", sign, intBuf, digits);
+  return NT_OK;
+}
+
+nt_err nt_format_date_string(const nt_natural_date* nd, char separator, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 8 || !nd) return NT_ERR_RANGE;
+  char yearBuf[8];
+  char moonBuf[8];
+  char domBuf[8];
+  if (nt_format_year_string(nd->year, yearBuf, sizeof(yearBuf)) != NT_OK) return NT_ERR_RANGE;
+  if (nd->is_rainbow_day) {
+    int isSecond = (nd->day_of_year == 366);
+    if (isSecond) safe_snprintf(buffer, buffer_size, "%s%cRAINBOW+", yearBuf, separator);
+    else safe_snprintf(buffer, buffer_size, "%s%cRAINBOW", yearBuf, separator);
+    return NT_OK;
+  }
+  if (nt_format_moon_string(nd->moon, moonBuf, sizeof(moonBuf)) != NT_OK) return NT_ERR_RANGE;
+  if (nt_format_day_of_moon_string(nd->day_of_moon, domBuf, sizeof(domBuf)) != NT_OK) return NT_ERR_RANGE;
+  safe_snprintf(buffer, buffer_size, "%s%c%s%c%s", yearBuf, separator, moonBuf, separator, domBuf);
+  return NT_OK;
+}
+
+nt_err nt_format_string(const nt_natural_date* nd, int time_decimals, double time_rounding, char* buffer, size_t buffer_size) {
+  if (!buffer || buffer_size < 16 || !nd) return NT_ERR_RANGE;
+  char dateBuf[32];
+  char timeBuf[32];
+  char lonBuf[16];
+  if (nt_format_date_string(nd, ')', dateBuf, sizeof(dateBuf)) != NT_OK) return NT_ERR_INTERNAL;
+  if (nt_format_time_string(nd, time_decimals, time_rounding, timeBuf, sizeof(timeBuf)) != NT_OK) return NT_ERR_INTERNAL;
+  if (nt_format_longitude_string(nd->longitude, 1, lonBuf, sizeof(lonBuf)) != NT_OK) return NT_ERR_INTERNAL;
+  safe_snprintf(buffer, buffer_size, "%s %s %s", dateBuf, timeBuf, lonBuf);
+  return NT_OK;
+}
+
+nt_err nt_time_split_scaled(const nt_natural_date* nd,
+                             int decimals,
+                             double rounding,
+                             int32_t* out_integer,
+                             int32_t* out_fraction,
+                             int32_t* out_scale) {
+  if (!nd || !out_integer || !out_fraction || !out_scale) return NT_ERR_RANGE;
+  if (decimals < 0) decimals = 0;
+  if (decimals > 6) decimals = 6;
+  double t = nd->time_deg;
+  if (rounding > 0) {
+    t = round_to_increment(t, rounding);
+  }
+  if (t >= 360.0 || t < 0.0) {
+    t = fmod(t, 360.0);
+    if (t < 0.0) t += 360.0;
+  }
+  int32_t scale = 1;
+  for (int i = 0; i < decimals; ++i) scale *= 10;
+  int64_t total = (int64_t) llround(t * (double)scale);
+  if (total >= (int64_t)360 * scale) total -= (int64_t)360 * scale;
+  if (total < 0) total += (int64_t)360 * scale;
+  *out_integer = (int32_t)(total / scale);
+  *out_fraction = (int32_t)(total % scale);
+  *out_scale = scale;
+  return NT_OK;
+}
 
